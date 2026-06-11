@@ -17,16 +17,26 @@
         forms.forEach(function (form) {
             if (form.dataset.ajax !== 'Y') {
                 return;
+        }
+
+        form.addEventListener('submit', function (event) {
+            if (typeof form.checkValidity === 'function' && !form.checkValidity()) {
+                return;
             }
 
-            form.addEventListener('submit', function (event) {
-                event.preventDefault();
-                submitForm(form);
-            });
+            event.preventDefault();
+            submitForm(form);
+        });
         });
     }
 
     function submitForm(form) {
+        if (form.dataset.submitting === 'Y') {
+            return;
+        }
+
+        form.dataset.submitting = 'Y';
+
         var submitButton = form.querySelector('[data-webcomp-form-submit]');
         var originalButtonText = submitButton ? submitButton.textContent : '';
 
@@ -62,6 +72,7 @@
                 fallbackToNormalSubmit(form);
             })
             .finally(function () {
+                delete form.dataset.submitting;
                 restoreButton(submitButton, originalButtonText);
             });
     }

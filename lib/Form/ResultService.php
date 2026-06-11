@@ -22,6 +22,8 @@ class ResultService
     private const SYSTEM_ERROR_CODE = 'SYSTEM';
     private const REQUIRED_ERROR = 'Поле обязательно для заполнения';
     private const INVALID_VALUE_ERROR = 'Некорректное значение поля';
+    private const MAX_VALUE_LENGTH = 5000;
+    private const TOO_LONG_ERROR = 'Слишком длинное значение поля';
 
     /**
      * Выполняет полный цикл обработки отправки формы.
@@ -43,13 +45,20 @@ class ResultService
 
         try {
             $resultId = $this->saveResult($iblockId, $fields, $requestData);
-            $this->sendMail($iblockId, $resultId, $fields, $requestData, $context);
         } catch (Throwable $exception) {
             $this->logException($exception);
 
             return $this->buildResult(false, 0, [
                 self::SYSTEM_ERROR_CODE => 'Не удалось отправить форму',
             ]);
+        }
+
+        try {
+            $this->sendMail($iblockId, $resultId, $fields, $requestData, $context);
+        } catch (Throwable $exception) {
+            // Заявка уже сохранена: сбой почтового уведомления не должен выглядеть
+            // для посетителя как ошибка отправки и провоцировать повторные сабмиты.
+            $this->logException($exception);
         }
 
         return $this->buildResult(true, $resultId, []);
@@ -87,9 +96,31 @@ class ResultService
             if (!$this->isEmptyValue($field, $value) && !$this->isAllowedOptionValue($field, $value)) {
                 $errors[$code] = self::INVALID_VALUE_ERROR;
             }
+
+            if (!isset($errors[$code]) && $this->isTooLongValue($value)) {
+                $errors[$code] = self::TOO_LONG_ERROR;
+            }
         }
 
         return $errors;
+    }
+
+    /**
+     * Проверяет, превышает ли какое-либо из значений поля допустимую длину.
+     *
+     * @param mixed $value Значение из запроса.
+     *
+     * @return bool
+     */
+    private function isTooLongValue($value): bool
+    {
+        foreach ($this->normalizeValueList($value) as $item) {
+            if (mb_strlen($item) > self::MAX_VALUE_LENGTH) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -469,7 +500,7 @@ class ResultService
             );
         }
 
-        return implode(', ', $values);
+        return nl2br(htmlspecialcharsbx(implode(', ', $values)));
     }
 
     /**

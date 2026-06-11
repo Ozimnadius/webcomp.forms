@@ -12,9 +12,8 @@ $form = is_array($arResult['FORM'] ?? null) ? $arResult['FORM'] : [];
 $fields = is_array($arResult['FIELDS'] ?? null) ? $arResult['FIELDS'] : [];
 $values = is_array($arResult['VALUES'] ?? null) ? $arResult['VALUES'] : [];
 $errors = is_array($arResult['ERRORS'] ?? null) ? $arResult['ERRORS'] : [];
-$submitResult = is_array($arResult['SUBMIT_RESULT'] ?? null) ? $arResult['SUBMIT_RESULT'] : [];
 $isSubmitted = (bool)($arResult['IS_SUBMITTED'] ?? false);
-$isSuccess = $isSubmitted && (($submitResult['SUCCESS'] ?? false) === true);
+$isSuccess = (bool)($arResult['SHOW_SUCCESS'] ?? false);
 $formId = 'webcomp-form-' . (int)($form['ID'] ?? 0);
 
 $getFieldValue = static function (array $field) use ($values) {
@@ -300,3 +299,5 @@ $getOptionText = static function (array $option): string {
         </button>
     </form>
 </div>
+
+<script src="<?= htmlspecialcharsbx(CUtil::GetAdditionalFileURL($templateFolder . '/script.js')) ?>"></script>

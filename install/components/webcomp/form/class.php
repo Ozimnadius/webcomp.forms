@@ -22,8 +22,8 @@ class WebcompFormComponent extends CBitrixComponent
 {
     private const SUBMIT_FIELD = 'webcomp_form_submit';
     private const PARAMS_HASH_FIELD = 'PARAMS_HASH';
+    private const SUCCESS_FLAG_FIELD = 'webcomp_form_success';
     private const DEFAULT_SUBMIT_TEXT = 'Отправить';
-    private const DEFAULT_CACHE_TIME = 36000000;
 
     /**
      * Нормализует параметры компонента до стабильного формата.
@@ -40,9 +40,6 @@ class WebcompFormComponent extends CBitrixComponent
 
         $submitText = trim((string)($arParams['SUBMIT_TEXT'] ?? ''));
         $arParams['SUBMIT_TEXT'] = $submitText !== '' ? $submitText : self::DEFAULT_SUBMIT_TEXT;
-
-        $cacheTime = (int)($arParams['CACHE_TIME'] ?? self::DEFAULT_CACHE_TIME);
-        $arParams['CACHE_TIME'] = $cacheTime > 0 ? $cacheTime : self::DEFAULT_CACHE_TIME;
 
         return $arParams;
     }
@@ -62,29 +59,26 @@ class WebcompFormComponent extends CBitrixComponent
         $isSubmitted = $this->isRawSubmitRequest();
 
         if (!$isSubmitted) {
-            $this->renderCachedForm();
+            $this->renderForm();
             return;
         }
 
-        $this->abortResultCache();
         $this->handleSubmit();
     }
 
     /**
-     * Рендерит форму с кэшированием неизменяемых данных формы.
+     * Рендерит форму.
+     *
+     * Вывод не кэшируется: в шаблоне присутствует bitrix_sessid_post(),
+     * который должен формироваться для текущей сессии посетителя.
      *
      * @return void
      */
-    private function renderCachedForm(): void
+    private function renderForm(): void
     {
-        if (!$this->startResultCache(false, $this->getCacheKey())) {
-            return;
-        }
-
         $data = $this->loadFormData();
 
         if ($data === null) {
-            $this->abortResultCache();
             ShowError('Форма не найдена.');
             return;
         }
@@ -140,6 +134,10 @@ class WebcompFormComponent extends CBitrixComponent
             if (($submitResult['SUCCESS'] ?? false) === true) {
                 $values = $this->getEmptyValues($fields);
             }
+        }
+
+        if (($submitResult['SUCCESS'] ?? false) === true && !$this->isAjaxResponseRequired()) {
+            LocalRedirect($this->getSuccessUrl((int)$form['ID']));
         }
 
         $this->arResult = $this->buildArResult($form, $fields, $values, $errors, $submitResult, true);
@@ -203,6 +201,7 @@ class WebcompFormComponent extends CBitrixComponent
             'VALUES' => $values,
             'ERRORS' => $errors,
             'SUBMIT_RESULT' => $submitResult,
+            'SHOW_SUCCESS' => $this->shouldShowSuccess($form, $submitResult, $isSubmitted),
             'PARAMS_HASH' => $this->getParamsHash(),
             'USE_AJAX' => $this->arParams['USE_AJAX'],
             'SUBMIT_TEXT' => $this->arParams['SUBMIT_TEXT'],
@@ -254,7 +253,7 @@ class WebcompFormComponent extends CBitrixComponent
             }
 
             if (array_key_exists($code, $requestData)) {
-                $values[$code] = $requestData[$code];
+                $values[$code] = $this->normalizeRequestValue($field, $requestData[$code]);
                 continue;
             }
 
@@ -273,7 +272,37 @@ class WebcompFormComponent extends CBitrixComponent
      */
     private function isMultipleValueField(array $field): bool
     {
-        return ($field['TYPE'] ?? '') === 'checkbox' && !empty($field['OPTIONS']);
+        $type = (string)($field['TYPE'] ?? '');
+
+        if ($type === 'checkbox' && !empty($field['OPTIONS'])) {
+            return true;
+        }
+
+        return $type === 'select' && (($field['MULTIPLE'] ?? false) === true);
+    }
+
+    /**
+     * Приводит значение из запроса к типу, ожидаемому полем.
+     *
+     * Поля с одним значением получают строку (массив из подменённого запроса
+     * отбрасывается), поля с несколькими значениями — массив.
+     *
+     * @param array $field Поле формы.
+     * @param mixed $value Сырое значение из POST.
+     *
+     * @return array|string
+     */
+    private function normalizeRequestValue(array $field, $value)
+    {
+        if ($this->isMultipleValueField($field)) {
+            if (is_array($value)) {
+                return $value;
+            }
+
+            return $value === null || $value === '' ? [] : [(string)$value];
+        }
+
+        return is_array($value) ? '' : (string)$value;
     }
 
     /**
@@ -291,6 +320,47 @@ class WebcompFormComponent extends CBitrixComponent
     }
 
     /**
+     * Формирует URL текущей страницы с маркером успешной отправки.
+     *
+     * @param int $formId ID инфоблока формы.
+     *
+     * @return string
+     */
+    private function getSuccessUrl(int $formId): string
+    {
+        global $APPLICATION;
+
+        return $APPLICATION->GetCurPageParam(
+            self::SUCCESS_FLAG_FIELD . '=' . $formId,
+            [self::SUCCESS_FLAG_FIELD]
+        );
+    }
+
+    /**
+     * Определяет, нужно ли показывать сообщение об успешной отправке.
+     *
+     * Для POST-ответа берется результат обработки, для GET после редиректа -
+     * маркер успешной отправки именно этой формы в параметрах запроса.
+     *
+     * @param array $form Данные инфоблока формы.
+     * @param array $submitResult Результат обработки отправки.
+     * @param bool $isSubmitted Флаг отправки формы.
+     *
+     * @return bool
+     */
+    private function shouldShowSuccess(array $form, array $submitResult, bool $isSubmitted): bool
+    {
+        if ($isSubmitted) {
+            return ($submitResult['SUCCESS'] ?? false) === true;
+        }
+
+        $formId = (int)($form['ID'] ?? 0);
+        $flag = (int)Context::getCurrent()->getRequest()->get(self::SUCCESS_FLAG_FIELD);
+
+        return $formId > 0 && $flag === $formId;
+    }
+
+    /**
      * Формирует хэш параметров для защиты отправки от подмены формы.
      *
      * @return string
@@ -301,19 +371,6 @@ class WebcompFormComponent extends CBitrixComponent
             'IBLOCK_ID' => $this->arParams['IBLOCK_ID'],
             'IBLOCK_CODE' => $this->arParams['IBLOCK_CODE'],
         ]));
-    }
-
-    /**
-     * Возвращает ключ кэша данных формы.
-     *
-     * @return array
-     */
-    private function getCacheKey(): array
-    {
-        return [
-            'IBLOCK_ID' => $this->arParams['IBLOCK_ID'],
-            'IBLOCK_CODE' => $this->arParams['IBLOCK_CODE'],
-        ];
     }
 
     /**

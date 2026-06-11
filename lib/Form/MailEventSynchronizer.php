@@ -11,7 +11,10 @@ use Bitrix\Main\Mail\Internal\EventTypeTable;
 use Bitrix\Main\Mail\Internal\EventMessageTable;
 use Bitrix\Main\Mail\Internal\EventMessageSiteTable;
 use Bitrix\Main\Mail\Internal\EventMessageAttachmentTable;
+use Bitrix\Main\Config\Option;
+use Bitrix\Main\Web\Json;
 use Webcomp\Forms\PropertyTypes\FormBuilder;
+
 use Throwable;
 
 /**
@@ -19,7 +22,8 @@ use Throwable;
  *
  * Один инфоблок типа forms соответствует одной публичной форме. На основе
  * инфоблока и его активных свойств класс создает или обновляет тип почтового
- * события, почтовый шаблон, язык шаблона и привязку шаблона к сайтам инфоблока.
+ * события, один раз создает почтовый шаблон и поддерживает привязку шаблона
+ * к сайтам инфоблока. Связь формы с событием и шаблоном хранится в опциях модуля.
  *
  * Публичные методы безопасны для вызова из обработчиков событий Bitrix: все
  * исключения внутренних D7 ORM-операций перехватываются и пишутся в журнал.
@@ -27,6 +31,8 @@ use Throwable;
 class MailEventSynchronizer
 {
     private const EVENT_PREFIX = 'WEBCOMP_FORM_';
+    private const MODULE_ID = 'webcomp.forms';
+    private const OPTION_PREFIX = 'mail_binding_';
 
     /**
      * Безопасно синхронизирует тип почтового события и почтовый шаблон формы.
@@ -50,9 +56,9 @@ class MailEventSynchronizer
     /**
      * Выполняет синхронизацию почтовых сущностей формы.
      *
-     * Метод обновляет описание типа почтового события, создает или обновляет
-     * почтовый шаблон, пересобирает тело письма по активным свойствам формы,
-     * выставляет язык шаблона и синхронизирует привязку шаблона к сайтам.
+     * Метод обновляет описание типа почтового события, при первом обращении
+     * создает почтовый шаблон с автогенерированным телом, а для существующего
+     * шаблона синхронизирует только привязку к сайтам, не трогая его содержимое.
      *
      * @param int $iblockId ID инфоблока формы.
      *
@@ -99,6 +105,12 @@ class MailEventSynchronizer
 
         $siteIds = self::getIblockSiteIds($iblockId);
         $eventName = self::getEventName($iblock);
+        $binding = self::getBinding($iblockId);
+
+        if ($binding !== null && $binding['EVENT_NAME'] !== '' && $binding['EVENT_NAME'] !== $eventName) {
+            self::renameEvent($binding['EVENT_NAME'], $eventName);
+        }
+
         $eventFields = [
             'LID' => LANGUAGE_ID,
             'EVENT_NAME' => $eventName,
@@ -122,23 +134,34 @@ class MailEventSynchronizer
             EventTypeTable::add($eventFields);
         }
 
-        $message = EventMessageTable::getList([
-            'select' => ['ID'],
-            'filter' => [
-                '=EVENT_NAME' => $eventName,
-            ],
-            'limit' => 1,
-        ])->fetch();
+        $messageId = (int)($binding['MESSAGE_ID'] ?? 0);
+        $message = null;
+
+        if ($messageId > 0) {
+            $message = EventMessageTable::getList([
+                'select' => ['ID'],
+                'filter' => [
+                    '=ID' => $messageId,
+                    '=EVENT_NAME' => $eventName,
+                ],
+                'limit' => 1,
+            ])->fetch();
+        }
+
+        if (!$message) {
+            $message = EventMessageTable::getList([
+                'select' => ['ID'],
+                'filter' => [
+                    '=EVENT_NAME' => $eventName,
+                ],
+                'limit' => 1,
+            ])->fetch();
+        }
 
         if ($message) {
+            // Тело существующего шаблона не перезаписывается, чтобы не терять
+            // ручные правки администратора. Синхронизируется только привязка к сайтам.
             $messageId = (int)$message['ID'];
-
-            EventMessageTable::update($messageId, [
-                'LANGUAGE_ID' => LANGUAGE_ID,
-                'MESSAGE' => self::buildMessageBody($iblock, $properties),
-                'BODY_TYPE' => 'html',
-            ]);
-
             self::syncMessageSites($messageId, $siteIds);
         } else {
             $messageResult = EventMessageTable::add([
@@ -152,9 +175,15 @@ class MailEventSynchronizer
                 'LANGUAGE_ID' => LANGUAGE_ID,
             ]);
 
-            if ($messageResult->isSuccess()) {
-                self::syncMessageSites((int)$messageResult->getId(), $siteIds);
+            $messageId = $messageResult->isSuccess() ? (int)$messageResult->getId() : 0;
+
+            if ($messageId > 0) {
+                self::syncMessageSites($messageId, $siteIds);
             }
+        }
+
+        if ($messageId > 0) {
+            self::saveBinding($iblockId, $eventName, $messageId);
         }
     }
 
@@ -194,7 +223,10 @@ class MailEventSynchronizer
             return;
         }
 
-        $eventName = self::getEventName($iblock);
+        $binding = self::getBinding($iblockId);
+        $eventName = $binding !== null && $binding['EVENT_NAME'] !== ''
+            ? $binding['EVENT_NAME']
+            : self::getEventName($iblock);
 
         $messages = EventMessageTable::getList([
             'select' => ['ID'],
@@ -237,6 +269,8 @@ class MailEventSynchronizer
         while ($eventType = $eventTypes->fetch()) {
             EventTypeTable::delete((int)$eventType['ID']);
         }
+
+        self::deleteBinding($iblockId);
     }
 
     /**
@@ -263,7 +297,7 @@ class MailEventSynchronizer
         $code = trim((string)$code, '_');
 
         if ($code === '') {
-            $code = 'UNKNOWN';
+            $code = (string)(int)($iblock['ID'] ?? 0);
         }
 
         return self::EVENT_PREFIX . $code;
@@ -472,5 +506,104 @@ class MailEventSynchronizer
         }
 
         return $iblock;
+    }
+
+    /**
+     * Возвращает сохраненную привязку формы к почтовым сущностям.
+     *
+     * @param int $iblockId ID инфоблока формы.
+     *
+     * @return array{EVENT_NAME: string, MESSAGE_ID: int}|null
+     */
+    private static function getBinding(int $iblockId): ?array
+    {
+        $raw = (string)Option::get(self::MODULE_ID, self::OPTION_PREFIX . $iblockId, '');
+
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $binding = Json::decode($raw);
+        } catch (Throwable $exception) {
+            return null;
+        }
+
+        if (!is_array($binding)) {
+            return null;
+        }
+
+        return [
+            'EVENT_NAME' => trim((string)($binding['EVENT_NAME'] ?? '')),
+            'MESSAGE_ID' => (int)($binding['MESSAGE_ID'] ?? 0),
+        ];
+    }
+
+    /**
+     * Сохраняет привязку формы к типу события и почтовому шаблону.
+     *
+     * @param int $iblockId ID инфоблока формы.
+     * @param string $eventName Имя почтового события.
+     * @param int $messageId ID почтового шаблона.
+     *
+     * @return void
+     */
+    private static function saveBinding(int $iblockId, string $eventName, int $messageId): void
+    {
+        Option::set(self::MODULE_ID, self::OPTION_PREFIX . $iblockId, Json::encode([
+            'EVENT_NAME' => $eventName,
+            'MESSAGE_ID' => $messageId,
+        ]));
+    }
+
+    /**
+     * Удаляет сохраненную привязку формы.
+     *
+     * @param int $iblockId ID инфоблока формы.
+     *
+     * @return void
+     */
+    private static function deleteBinding(int $iblockId): void
+    {
+        Option::delete(self::MODULE_ID, ['name' => self::OPTION_PREFIX . $iblockId]);
+    }
+
+    /**
+     * Переносит тип события и все его шаблоны на новое имя события.
+     *
+     * Используется при смене символьного кода инфоблока: вместо создания новых
+     * сущностей (и сирот со старым именем) существующие переименовываются,
+     * что сохраняет шаблон и его ручные правки.
+     *
+     * @param string $oldName Старое имя события.
+     * @param string $newName Новое имя события.
+     *
+     * @return void
+     *
+     * @throws \Exception При ошибках D7 ORM-операций.
+     */
+    private static function renameEvent(string $oldName, string $newName): void
+    {
+        if ($oldName === '' || $oldName === $newName) {
+            return;
+        }
+
+        $eventTypes = EventTypeTable::getList([
+            'select' => ['ID'],
+            'filter' => ['=EVENT_NAME' => $oldName],
+        ]);
+
+        while ($eventType = $eventTypes->fetch()) {
+            EventTypeTable::update((int)$eventType['ID'], ['EVENT_NAME' => $newName]);
+        }
+
+        $messages = EventMessageTable::getList([
+            'select' => ['ID'],
+            'filter' => ['=EVENT_NAME' => $oldName],
+        ]);
+
+        while ($message = $messages->fetch()) {
+            EventMessageTable::update((int)$message['ID'], ['EVENT_NAME' => $newName]);
+        }
     }
 }

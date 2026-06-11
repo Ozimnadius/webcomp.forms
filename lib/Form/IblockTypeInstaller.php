@@ -3,6 +3,7 @@
 namespace Webcomp\Forms\Form;
 
 use Bitrix\Main\Loader;
+use RuntimeException;
 
 /**
  * Управляет типом инфоблоков, в котором хранятся формы модуля.
@@ -21,6 +22,8 @@ class IblockTypeInstaller
      * Создает тип инфоблоков forms, если он еще не существует.
      *
      * @return void
+     *
+     * @throws RuntimeException Если ядро отказало в создании типа инфоблоков.
      */
     public static function install(): void
     {
@@ -33,7 +36,7 @@ class IblockTypeInstaller
         }
 
         $iblockType = new \CIBlockType();
-        $iblockType->Add([
+        $result = $iblockType->Add([
             'ID' => self::TYPE_ID,
             'SECTIONS' => 'N',
             'IN_RSS' => 'N',
@@ -51,6 +54,12 @@ class IblockTypeInstaller
                 ],
             ],
         ]);
+
+        if (!$result) {
+            throw new RuntimeException(
+                'Не удалось создать тип инфоблоков forms: ' . (string)$iblockType->LAST_ERROR
+            );
+        }
     }
 
     /**

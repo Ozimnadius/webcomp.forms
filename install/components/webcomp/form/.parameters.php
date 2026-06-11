@@ -62,21 +62,5 @@ $arComponentParameters = [
             'TYPE' => 'CHECKBOX',
             'DEFAULT' => 'Y',
         ],
-        'CACHE_TYPE' => [
-            'PARENT' => 'CACHE_SETTINGS',
-            'NAME' => 'Тип кеширования',
-            'TYPE' => 'LIST',
-            'VALUES' => [
-                'A' => 'Авто',
-                'Y' => 'Кешировать',
-                'N' => 'Не кешировать',
-            ],
-            'DEFAULT' => 'A',
-        ],
-        'CACHE_TIME' => [
-            'PARENT' => 'CACHE_SETTINGS',
-            'NAME' => 'Время кеширования',
-            'DEFAULT' => 36000000,
-        ],
     ],
 ];
