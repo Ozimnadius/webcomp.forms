@@ -4,6 +4,7 @@ namespace Webcomp\Forms\EventHandlers;
 
 use Bitrix\Main\Application;
 use Bitrix\Main\Page\Asset;
+use Webcomp\Forms\Form\IblockTypeInstaller;
 use Webcomp\Forms\PropertyTypes\FormBuilder;
 
 /**
@@ -15,11 +16,6 @@ use Webcomp\Forms\PropertyTypes\FormBuilder;
  */
 class AdminHandler
 {
-    /**
-     * Тип инфоблоков, для которого нужен административный JS модуля.
-     */
-    private const FORMS_IBLOCK_TYPE = 'forms';
-
     /**
      * Административная страница редактирования инфоблока.
      */
@@ -47,7 +43,7 @@ class AdminHandler
             return;
         }
 
-        if ((string)$request->get('type') !== self::FORMS_IBLOCK_TYPE) {
+        if ((string)$request->get('type') !== IblockTypeInstaller::TYPE_ID) {
             return;
         }
 

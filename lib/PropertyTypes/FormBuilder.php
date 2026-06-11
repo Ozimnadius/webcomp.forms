@@ -487,8 +487,15 @@ class FormBuilder
     private static function getFieldTypeChangeHandler(): string
     {
         return <<<'JS'
-(function(select){var table=select.closest('table')||document;var row=table.querySelector('[data-webcomp-forms-options-row]');if(row){row.style.display=({select:1,checkbox:1,radio:1})[select.value]?'':'none';}})(this);
-JS;
+        (function (select) {
+            var table = select.closest('table') || document;
+            var row = table.querySelector('[data-webcomp-forms-options-row]');
+
+            if (row) {
+                row.style.display = ({select: 1, checkbox: 1, radio: 1})[select.value] ? '' : 'none';
+            }
+        })(this);
+        JS;
     }
 
     /**
@@ -499,8 +506,77 @@ JS;
     private static function getAddOptionHandler(): string
     {
         return <<<'JS'
-(function(button){var cell=button.closest('td');var container=cell&&cell.querySelector('[data-webcomp-forms-options]');if(!container){return false;}var baseName=container.getAttribute('data-name');var index=parseInt(container.getAttribute('data-next-index')||'0',10);var row=document.createElement('div');row.className='webcomp-forms-property-settings__option';row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';row.setAttribute('data-webcomp-forms-option-row','');var valueInput=document.createElement('input');valueInput.type='text';valueInput.className='webcomp-forms-property-settings__option-input webcomp-forms-property-settings__option-input--value';valueInput.style.width='170px';valueInput.name=baseName+'['+index+'][VALUE]';valueInput.placeholder='Значение';var textInput=document.createElement('input');textInput.type='text';textInput.className='webcomp-forms-property-settings__option-input webcomp-forms-property-settings__option-input--text';textInput.style.width='210px';textInput.name=baseName+'['+index+'][TEXT]';textInput.placeholder='Текст';var removeButton=document.createElement('button');removeButton.type='button';removeButton.className='adm-btn';removeButton.style.whiteSpace='nowrap';removeButton.setAttribute('data-webcomp-forms-remove-option','');removeButton.textContent='Удалить';removeButton.onclick=function(){var removeButton=this;var row=removeButton.closest('[data-webcomp-forms-option-row]');var container=row&&row.closest('[data-webcomp-forms-options]');if(!row||!container){return false;}var rows=container.querySelectorAll('[data-webcomp-forms-option-row]');if(rows.length<=1){var inputs=row.querySelectorAll('input');for(var i=0;i<inputs.length;i++){inputs[i].value='';}return false;}row.parentNode.removeChild(row);return false;};row.appendChild(valueInput);row.appendChild(textInput);row.appendChild(removeButton);container.appendChild(row);container.setAttribute('data-next-index',String(index+1));return false;})(this);
-JS;
+        (function (button) {
+            var cell = button.closest('td');
+            var container = cell && cell.querySelector('[data-webcomp-forms-options]');
+
+            if (!container) {
+                return false;
+            }
+
+            var baseName = container.getAttribute('data-name');
+            var index = parseInt(container.getAttribute('data-next-index') || '0', 10);
+
+            var row = document.createElement('div');
+            row.className = 'webcomp-forms-property-settings__option';
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+            row.setAttribute('data-webcomp-forms-option-row', '');
+
+            var valueInput = document.createElement('input');
+            valueInput.type = 'text';
+            valueInput.className = 'webcomp-forms-property-settings__option-input webcomp-forms-property-settings__option-input--value';
+            valueInput.style.width = '170px';
+            valueInput.name = baseName + '[' + index + '][VALUE]';
+            valueInput.placeholder = 'Значение';
+
+            var textInput = document.createElement('input');
+            textInput.type = 'text';
+            textInput.className = 'webcomp-forms-property-settings__option-input webcomp-forms-property-settings__option-input--text';
+            textInput.style.width = '210px';
+            textInput.name = baseName + '[' + index + '][TEXT]';
+            textInput.placeholder = 'Текст';
+
+            var removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'adm-btn';
+            removeButton.style.whiteSpace = 'nowrap';
+            removeButton.setAttribute('data-webcomp-forms-remove-option', '');
+            removeButton.textContent = 'Удалить';
+            removeButton.onclick = function () {
+                var removeButton = this;
+                var row = removeButton.closest('[data-webcomp-forms-option-row]');
+                var container = row && row.closest('[data-webcomp-forms-options]');
+
+                if (!row || !container) {
+                    return false;
+                }
+
+                var rows = container.querySelectorAll('[data-webcomp-forms-option-row]');
+
+                if (rows.length <= 1) {
+                    var inputs = row.querySelectorAll('input');
+
+                    for (var i = 0; i < inputs.length; i++) {
+                        inputs[i].value = '';
+                    }
+
+                    return false;
+                }
+
+                row.parentNode.removeChild(row);
+
+                return false;
+            };
+
+            row.appendChild(valueInput);
+            row.appendChild(textInput);
+            row.appendChild(removeButton);
+            container.appendChild(row);
+            container.setAttribute('data-next-index', String(index + 1));
+
+            return false;
+        })(this);
+        JS;
     }
 
     /**
@@ -511,8 +587,31 @@ JS;
     private static function getRemoveOptionHandler(): string
     {
         return <<<'JS'
-(function(button){var row=button.closest('[data-webcomp-forms-option-row]');var container=row&&row.closest('[data-webcomp-forms-options]');if(!row||!container){return false;}var rows=container.querySelectorAll('[data-webcomp-forms-option-row]');if(rows.length<=1){var inputs=row.querySelectorAll('input');for(var i=0;i<inputs.length;i++){inputs[i].value='';}return false;}row.parentNode.removeChild(row);return false;})(this);
-JS;
+        (function (button) {
+            var row = button.closest('[data-webcomp-forms-option-row]');
+            var container = row && row.closest('[data-webcomp-forms-options]');
+
+            if (!row || !container) {
+                return false;
+            }
+
+            var rows = container.querySelectorAll('[data-webcomp-forms-option-row]');
+
+            if (rows.length <= 1) {
+                var inputs = row.querySelectorAll('input');
+
+                for (var i = 0; i < inputs.length; i++) {
+                    inputs[i].value = '';
+                }
+
+                return false;
+            }
+
+            row.parentNode.removeChild(row);
+
+            return false;
+        })(this);
+        JS;
     }
 
     /**

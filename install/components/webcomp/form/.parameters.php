@@ -8,14 +8,14 @@ $forms = [
     '' => 'Не выбрано',
 ];
 
-if (\Bitrix\Main\Loader::includeModule('iblock')) {
+if (\Bitrix\Main\Loader::includeModule('iblock') && \Bitrix\Main\Loader::includeModule('webcomp.forms')) {
     $iblocks = \CIBlock::GetList(
         [
             'SORT' => 'ASC',
             'NAME' => 'ASC',
         ],
         [
-            'TYPE' => 'forms',
+            'TYPE' => \Webcomp\Forms\Form\IblockTypeInstaller::TYPE_ID,
             'ACTIVE' => 'Y',
         ]
     );

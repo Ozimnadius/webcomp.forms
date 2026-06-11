@@ -3,9 +3,6 @@
 namespace Webcomp\Forms\Form;
 
 
-use Bitrix\Main\Loader;
-use Bitrix\Iblock\IblockTable;
-use Bitrix\Iblock\IblockSiteTable;
 use Bitrix\Iblock\PropertyTable;
 use Bitrix\Main\Mail\Internal\EventTypeTable;
 use Bitrix\Main\Mail\Internal\EventMessageTable;
@@ -23,7 +20,8 @@ use Throwable;
  * Один инфоблок типа forms соответствует одной публичной форме. На основе
  * инфоблока и его активных свойств класс создает или обновляет тип почтового
  * события, один раз создает почтовый шаблон и поддерживает привязку шаблона
- * к сайтам инфоблока. Связь формы с событием и шаблоном хранится в опциях модуля.
+ * к сайтам инфоблока. Чтение форм и их привязок к сайтам выполняется через
+ * FormRepository. Связь формы с событием и шаблоном хранится в опциях модуля.
  *
  * Публичные методы безопасны для вызова из обработчиков событий Bitrix: все
  * исключения внутренних D7 ORM-операций перехватываются и пишутся в журнал.
@@ -68,7 +66,7 @@ class MailEventSynchronizer
      */
     private static function doSyncByIblockId(int $iblockId): void
     {
-        $iblock = self::getFormsIblock($iblockId);
+        $iblock = (new FormRepository())->getFormById($iblockId);
 
         if ($iblock === null) {
             return;
@@ -103,7 +101,7 @@ class MailEventSynchronizer
             $properties[] = $property;
         }
 
-        $siteIds = self::getIblockSiteIds($iblockId);
+        $siteIds = $iblock['SITE_IDS'];
         $eventName = self::getEventName($iblock);
         $binding = self::getBinding($iblockId);
 
@@ -221,7 +219,7 @@ class MailEventSynchronizer
      */
     private static function doDeleteByIblock(int $iblockId): void
     {
-        $iblock = self::getFormsIblock($iblockId);
+        $iblock = (new FormRepository())->getFormById($iblockId);
 
         if ($iblock === null) {
             return;
@@ -412,35 +410,6 @@ class MailEventSynchronizer
     }
 
     /**
-     * Возвращает список сайтов, к которым привязан инфоблок формы.
-     *
-     * @param int $iblockId ID инфоблока формы.
-     *
-     * @return array<int, string> Список ID сайтов.
-     *
-     * @throws \Exception При ошибках D7 ORM-операций.
-     */
-    private static function getIblockSiteIds(int $iblockId): array
-    {
-        $siteIds = [];
-        $sites = IblockSiteTable::getList([
-            'select' => ['SITE_ID'],
-            'filter' => ['=IBLOCK_ID' => $iblockId],
-            'order' => ['SITE_ID' => 'ASC'],
-        ]);
-
-        while ($site = $sites->fetch()) {
-            $siteId = trim((string)($site['SITE_ID'] ?? ''));
-
-            if ($siteId !== '') {
-                $siteIds[] = $siteId;
-            }
-        }
-
-        return array_values(array_unique($siteIds));
-    }
-
-    /**
      * Пересобирает привязку почтового шаблона к сайтам.
      *
      * Старые связи шаблона с сайтами удаляются, затем создаются новые связи из
@@ -475,41 +444,6 @@ class MailEventSynchronizer
                 'SITE_ID' => $siteId,
             ]);
         }
-    }
-
-    /**
-     * Возвращает инфоблок формы или null, если инфоблок не подходит.
-     *
-     * Метод подключает необходимые модули, получает инфоблок по ID и проверяет,
-     * что он относится к типу forms.
-     *
-     * @param int $iblockId ID инфоблока.
-     *
-     * @return array<string, mixed>|null Данные инфоблока формы или null.
-     *
-     * @throws \Exception При ошибках подключения модулей или D7 ORM-операций.
-     */
-    private static function getFormsIblock(int $iblockId): ?array
-    {
-        if ($iblockId <= 0) {
-            return null;
-        }
-
-        if (!Loader::includeModule('main') || !Loader::includeModule('iblock')) {
-            return null;
-        }
-
-        $iblock = IblockTable::getList([
-            'select' => ['ID', 'IBLOCK_TYPE_ID', 'CODE', 'NAME'],
-            'filter' => ['=ID' => $iblockId],
-            'limit' => 1,
-        ])->fetch();
-
-        if (!$iblock || ($iblock['IBLOCK_TYPE_ID'] ?? '') !== IblockTypeInstaller::TYPE_ID) {
-            return null;
-        }
-
-        return $iblock;
     }
 
     /**
