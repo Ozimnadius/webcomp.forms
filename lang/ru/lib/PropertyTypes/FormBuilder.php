@@ -1,0 +1,2 @@
+<?php
+$MESS['WEBCOMP_FORMS_FORMBUILDER_NAME'] = 'Поле формы';
