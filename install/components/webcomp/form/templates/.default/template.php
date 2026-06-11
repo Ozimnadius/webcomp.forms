@@ -64,7 +64,7 @@ $view = $arResult['VIEW'];
         id="<?= htmlspecialcharsbx($view['FORM_HTML_ID']) ?>"
         class="webcomp-form__form"
         method="post"
-        action="<?= htmlspecialcharsbx(POST_FORM_ACTION_URI) ?>"
+        action="<?= htmlspecialcharsbx($view['FORM_ACTION']) ?>"
         enctype="multipart/form-data"
         data-webcomp-form
         data-ajax="<?= htmlspecialcharsbx((string)($arResult['USE_AJAX'] ?? 'N')) ?>"

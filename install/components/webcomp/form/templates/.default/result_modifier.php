@@ -130,6 +130,7 @@ foreach ((is_array($arResult['FIELDS'] ?? null) ? $arResult['FIELDS'] : []) as $
 $arResult['VIEW'] = [
     'MODE' => $renderMode,
     'FORM_HTML_ID' => $formHtmlId,
+    'FORM_ACTION' => (string)($arResult['FORM_ACTION'] ?? ''),
     'FIELDS' => $viewFields,
     'SHOW_SUCCESS' => (bool)($arResult['SHOW_SUCCESS'] ?? false),
     'SHOW_ERROR_ALERT' => (bool)($arResult['IS_SUBMITTED'] ?? false) && $errors !== [],

@@ -177,6 +177,7 @@
         if (success) {
             form.reset();
             showMessage(form, 'success', form.dataset.successMessage || 'Форма успешно отправлена.');
+            invalidateDialogCache(form);
             return;
         }
 
@@ -193,6 +194,17 @@
             'danger',
             errors.SYSTEM || form.dataset.errorMessage || 'Проверьте правильность заполнения формы.'
         );
+    }
+
+    // После успешной отправки кэш фрагмента в диалоге сбрасывается: следующее
+    // открытие попапа загрузит чистую форму вместо DOM с сообщением об успехе.
+    // При ошибках кэш сохраняется, чтобы не терять введенные пользователем данные.
+    function invalidateDialogCache(form) {
+        var dialog = form.closest('dialog[data-webcomp-form-dialog]');
+
+        if (dialog) {
+            delete dialog.dataset.loaded;
+        }
     }
 
     function showMessage(form, type, text) {

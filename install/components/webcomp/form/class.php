@@ -81,19 +81,20 @@ class WebcompFormComponent extends CBitrixComponent
             return;
         }
 
+        // Сабмит проверяется раньше фрагмента: даже если в URL запроса
+        // остались сервисные параметры рендера, отправка формы не должна
+        // перехватываться выдачей HTML-фрагмента.
+        if ($this->isRawSubmitRequest()) {
+            $this->handleSubmit();
+            return;
+        }
+
         if ($this->isFragmentRequest()) {
             $this->renderFragment();
             return;
         }
 
-        $isSubmitted = $this->isRawSubmitRequest();
-
-        if (!$isSubmitted) {
-            $this->renderForm();
-            return;
-        }
-
-        $this->handleSubmit();
+        $this->renderForm();
     }
 
     /**
@@ -351,6 +352,7 @@ class WebcompFormComponent extends CBitrixComponent
             'ERRORS' => $errors,
             'SUBMIT_RESULT' => $submitResult,
             'SHOW_SUCCESS' => $this->shouldShowSuccess($form, $submitResult, $isSubmitted),
+            'FORM_ACTION' => $this->getFormAction(),
             'PARAMS_HASH' => $this->getParamsHash(),
             'USE_AJAX' => $this->arParams['USE_AJAX'],
             'SUBMIT_TEXT' => $this->arParams['SUBMIT_TEXT'],
@@ -481,8 +483,28 @@ class WebcompFormComponent extends CBitrixComponent
 
         return $APPLICATION->GetCurPageParam(
             self::SUCCESS_FLAG_FIELD . '=' . $formId,
-            [self::SUCCESS_FLAG_FIELD]
+            [self::SUCCESS_FLAG_FIELD, self::RENDER_FIELD, self::PARAMS_HASH_FIELD]
         );
+    }
+
+    /**
+     * Возвращает URL отправки формы: текущая страница без сервисных параметров.
+     *
+     * Форма из попапа рендерится запросом фрагмента, и URI этого запроса
+     * содержит webcomp_form_render и PARAMS_HASH - в action формы они попадать
+     * не должны, иначе отправка перехватывается рендером фрагмента.
+     *
+     * @return string
+     */
+    private function getFormAction(): string
+    {
+        global $APPLICATION;
+
+        return $APPLICATION->GetCurPageParam('', [
+            self::RENDER_FIELD,
+            self::PARAMS_HASH_FIELD,
+            self::SUCCESS_FLAG_FIELD,
+        ]);
     }
 
     /**
