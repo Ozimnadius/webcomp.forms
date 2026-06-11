@@ -8,6 +8,14 @@ use Webcomp\Forms\Form\IblockTypeInstaller;
 
 Loc::loadMessages(__FILE__);
 
+/**
+ * Установщик модуля webcomp.forms.
+ *
+ * Устанавливает файлы (ассеты и компонент), регистрирует обработчики событий,
+ * регистрирует модуль и создает тип инфоблоков forms. При удалении выполняет
+ * обратные действия и подчищает данные модуля: инфоблоки форм, почтовые
+ * сущности и опции.
+ */
 class webcomp_forms extends CModule
 {
     public $MODULE_ID = 'webcomp.forms';
@@ -30,6 +38,11 @@ class webcomp_forms extends CModule
         $this->PARTNER_URI = 'https://web-komp.ru';
     }
 
+    /**
+     * Устанавливает модуль: файлы, события, регистрация, тип инфоблоков forms.
+     *
+     * @return void
+     */
     public function DoInstall()
     {
         $this->InstallFiles();
@@ -39,6 +52,12 @@ class webcomp_forms extends CModule
         IblockTypeInstaller::install();
     }
 
+    /**
+     * Удаляет модуль вместе с данными: инфоблоки форм, тип forms, почтовые
+     * сущности, опции модуля, скопированные файлы и регистрации событий.
+     *
+     * @return void
+     */
     public function DoUninstall()
     {
         Loader::includeModule($this->MODULE_ID);
@@ -49,6 +68,11 @@ class webcomp_forms extends CModule
         ModuleManager::unRegisterModule($this->MODULE_ID);
     }
 
+    /**
+     * Копирует ассеты в /bitrix/css|js и компонент в каталог компонентов.
+     *
+     * @return void
+     */
     public function InstallFiles()
     {
         CopyDirFiles(__DIR__ . '/css', $_SERVER['DOCUMENT_ROOT'] . '/bitrix/css/' . $this->MODULE_ID, true, true);
@@ -56,6 +80,11 @@ class webcomp_forms extends CModule
         CopyDirFiles(__DIR__ . '/components', $_SERVER['DOCUMENT_ROOT'] . $this->getComponentsPath(), true, true);
     }
 
+    /**
+     * Удаляет скопированные ассеты и компонент webcomp/form.
+     *
+     * @return void
+     */
     public function UnInstallFiles()
     {
         DeleteDirFilesEx('/bitrix/css/' . $this->MODULE_ID);
@@ -63,6 +92,12 @@ class webcomp_forms extends CModule
         DeleteDirFilesEx($this->getComponentsPath() . '/webcomp/form');
     }
 
+    /**
+     * Регистрирует обработчики: админский ассет, тип свойства formbuilder
+     * и события инфоблоков для синхронизации почтовых сущностей.
+     *
+     * @return void
+     */
     public function InstallEvents()
     {
         EventManager::getInstance()->registerEventHandler(
@@ -92,6 +127,11 @@ class webcomp_forms extends CModule
         }
     }
 
+    /**
+     * Снимает все регистрации обработчиков, созданные InstallEvents().
+     *
+     * @return void
+     */
     public function UnInstallEvents()
     {
         EventManager::getInstance()->unRegisterEventHandler(
@@ -121,6 +161,14 @@ class webcomp_forms extends CModule
         }
     }
 
+    /**
+     * Возвращает карту "событие iblock => метод IblockHandler".
+     *
+     * Используется и при регистрации, и при снятии обработчиков, чтобы списки
+     * не разъезжались.
+     *
+     * @return array<string, string>
+     */
     private function getIblockEventHandlers(): array
     {
         return [
@@ -133,11 +181,21 @@ class webcomp_forms extends CModule
         ];
     }
 
+    /**
+     * Возвращает путь каталога компонентов относительно корня сайта.
+     *
+     * @return string Путь вида /local/components или /bitrix/components.
+     */
     private function getComponentsPath(): string
     {
         return '/' . $this->getInstallRoot() . '/components';
     }
 
+    /**
+     * Определяет корень установки модуля по его фактическому расположению.
+     *
+     * @return string local или bitrix.
+     */
     private function getInstallRoot(): string
     {
         $documentRoot = rtrim(str_replace('\\', '/', (string)$_SERVER['DOCUMENT_ROOT']), '/');

@@ -100,6 +100,10 @@ class WebcompFormComponent extends CBitrixComponent
     /**
      * Обрабатывает отправку формы.
      *
+     * Успешная не-AJAX отправка завершается редиректом на текущую страницу
+     * с маркером успеха (Post/Redirect/Get), чтобы обновление страницы не
+     * повторяло POST. AJAX-отправка получает JSON-ответ без редиректа.
+     *
      * @return void
      */
     private function handleSubmit(): void
