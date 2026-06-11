@@ -28,7 +28,9 @@ if ($renderMode === 'popup_shell') {
         'SHOW_ERROR_ALERT' => false,
         'SYSTEM_ERROR' => '',
         'POPUP' => [
-            'MODAL_ID' => 'webcomp-form-dialog-' . randString(8),
+            // Ключ стабилен для одной и той же формы: несколько кнопок
+            // на странице делят один диалог и один загруженный фрагмент.
+            'DIALOG_KEY' => 'webcomp-form-' . (string)($arResult['PARAMS_HASH'] ?? ''),
             'BUTTON_TEXT' => (string)($arResult['BUTTON_TEXT'] ?? ''),
             'BUTTON_CLASS' => (string)($arResult['BUTTON_CLASS'] ?? ''),
             'FRAGMENT_URL' => $APPLICATION->GetCurPageParam(

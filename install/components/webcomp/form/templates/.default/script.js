@@ -5,8 +5,13 @@
         return;
     }
 
-    // Все обработчики делегированы на document: формы и попапы продолжают
-    // работать в любом динамически вставленном DOM (ленивая загрузка фрагмента).
+    // Скрипт отвечает только за отправку формы webcomp:form: AJAX-сабмит,
+    // рендер ошибок и сообщения об успехе. Машинерия всплывающего диалога
+    // (открытие, ленивая загрузка, кэш) живет в /bitrix/js/webcomp.forms/dialog.js
+    // и общается с формой только через всплывающие события.
+    //
+    // Обработчик делегирован на document: форма продолжает работать в любом
+    // динамически вставленном DOM, включая фрагмент внутри диалога.
 
     document.addEventListener('submit', function (event) {
         var form = event.target.closest('[data-webcomp-form]');
@@ -22,87 +27,6 @@
         event.preventDefault();
         submitForm(form);
     });
-
-    document.addEventListener('click', function (event) {
-        var opener = event.target.closest('[data-webcomp-form-open]');
-
-        if (opener) {
-            event.preventDefault();
-            openDialog(opener.getAttribute('data-webcomp-form-open'));
-            return;
-        }
-
-        var closer = event.target.closest('[data-webcomp-form-close]');
-
-        if (closer) {
-            var dialog = closer.closest('dialog');
-
-            if (dialog) {
-                dialog.close();
-            }
-
-            return;
-        }
-
-        // Клик по самому dialog мимо контента означает клик по backdrop.
-        if (event.target instanceof HTMLDialogElement && event.target.hasAttribute('data-webcomp-form-dialog')) {
-            event.target.close();
-        }
-    });
-
-    function openDialog(dialogId) {
-        var dialog = document.getElementById(dialogId);
-
-        if (!dialog || typeof dialog.showModal !== 'function') {
-            return;
-        }
-
-        if (!dialog.open) {
-            dialog.showModal();
-        }
-
-        if (dialog.dataset.loaded === 'Y' || dialog.dataset.loading === 'Y') {
-            return;
-        }
-
-        loadFragment(dialog);
-    }
-
-    function loadFragment(dialog) {
-        var body = dialog.querySelector('[data-webcomp-form-dialog-body]');
-        var url = dialog.getAttribute('data-fragment-url');
-
-        if (!body || !url) {
-            return;
-        }
-
-        dialog.dataset.loading = 'Y';
-        body.innerHTML = '<div class="webcomp-form-dialog__loader">Загрузка...</div>';
-
-        fetch(url, {
-            credentials: 'same-origin',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-            .then(function (response) {
-                if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
-                }
-
-                return response.text();
-            })
-            .then(function (html) {
-                body.innerHTML = html;
-                dialog.dataset.loaded = 'Y';
-            })
-            .catch(function () {
-                body.innerHTML = '<div class="alert alert-danger" role="alert">Не удалось загрузить форму. Попробуйте позже.</div>';
-            })
-            .finally(function () {
-                delete dialog.dataset.loading;
-            });
-    }
 
     function submitForm(form) {
         if (form.dataset.submitting === 'Y') {
@@ -177,7 +101,7 @@
         if (success) {
             form.reset();
             showMessage(form, 'success', form.dataset.successMessage || 'Форма успешно отправлена.');
-            invalidateDialogCache(form);
+            notifyDialogInvalidate(form);
             return;
         }
 
@@ -196,15 +120,14 @@
         );
     }
 
-    // После успешной отправки кэш фрагмента в диалоге сбрасывается: следующее
-    // открытие попапа загрузит чистую форму вместо DOM с сообщением об успехе.
-    // При ошибках кэш сохраняется, чтобы не терять введенные пользователем данные.
-    function invalidateDialogCache(form) {
-        var dialog = form.closest('dialog[data-webcomp-form-dialog]');
-
-        if (dialog) {
-            delete dialog.dataset.loaded;
-        }
+    // После успешной отправки форма сообщает наверх, что ее DOM отработан.
+    // Если форма открыта в диалоге webcomp.forms, тот сбросит кэш фрагмента
+    // и при следующем открытии загрузит чистую форму; инлайн-форма диспатчит
+    // событие в пустоту, и это безопасно.
+    function notifyDialogInvalidate(form) {
+        form.dispatchEvent(new CustomEvent('webcomp:dialog:invalidate', {
+            bubbles: true
+        }));
     }
 
     function showMessage(form, type, text) {
