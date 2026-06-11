@@ -17,13 +17,22 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) {
  * проверку служебных параметров отправки и передачу заполненных значений
  * в сервис сохранения результата. Визуальная разметка, тексты успешной
  * и ошибочной отправки остаются ответственностью шаблона компонента.
+ *
+ * Поддерживает два режима отображения (DISPLAY_MODE): inline - форма прямо
+ * на странице, popup - на странице только кнопка и пустой dialog, а HTML
+ * формы лениво загружается отдельным запросом при первом открытии попапа.
  */
 class WebcompFormComponent extends CBitrixComponent
 {
     private const SUBMIT_FIELD = 'webcomp_form_submit';
+    private const RENDER_FIELD = 'webcomp_form_render';
     private const PARAMS_HASH_FIELD = 'PARAMS_HASH';
     private const SUCCESS_FLAG_FIELD = 'webcomp_form_success';
+    private const DISPLAY_INLINE = 'inline';
+    private const DISPLAY_POPUP = 'popup';
     private const DEFAULT_SUBMIT_TEXT = 'Отправить';
+    private const DEFAULT_BUTTON_TEXT = 'Открыть форму';
+    private const DEFAULT_BUTTON_CLASS = 'btn btn-primary';
 
     /**
      * Нормализует параметры компонента до стабильного формата.
@@ -41,6 +50,22 @@ class WebcompFormComponent extends CBitrixComponent
         $submitText = trim((string)($arParams['SUBMIT_TEXT'] ?? ''));
         $arParams['SUBMIT_TEXT'] = $submitText !== '' ? $submitText : self::DEFAULT_SUBMIT_TEXT;
 
+        $arParams['DISPLAY_MODE'] = ($arParams['DISPLAY_MODE'] ?? '') === self::DISPLAY_POPUP
+            ? self::DISPLAY_POPUP
+            : self::DISPLAY_INLINE;
+
+        if ($arParams['DISPLAY_MODE'] === self::DISPLAY_POPUP) {
+            // В попапе сообщения рисует JS; обычный POST остается только
+            // fallback-сценарием без JS и деградирует до инлайн-страницы.
+            $arParams['USE_AJAX'] = 'Y';
+        }
+
+        $buttonText = trim((string)($arParams['BUTTON_TEXT'] ?? ''));
+        $arParams['BUTTON_TEXT'] = $buttonText !== '' ? $buttonText : self::DEFAULT_BUTTON_TEXT;
+
+        $buttonClass = trim((string)($arParams['BUTTON_CLASS'] ?? ''));
+        $arParams['BUTTON_CLASS'] = $buttonClass !== '' ? $buttonClass : self::DEFAULT_BUTTON_CLASS;
+
         return $arParams;
     }
 
@@ -53,6 +78,11 @@ class WebcompFormComponent extends CBitrixComponent
     {
         if (!Loader::includeModule('webcomp.forms')) {
             ShowError('Модуль webcomp.forms не подключен.');
+            return;
+        }
+
+        if ($this->isFragmentRequest()) {
+            $this->renderFragment();
             return;
         }
 
@@ -76,6 +106,11 @@ class WebcompFormComponent extends CBitrixComponent
      */
     private function renderForm(): void
     {
+        if ($this->arParams['DISPLAY_MODE'] === self::DISPLAY_POPUP) {
+            $this->renderPopupShell();
+            return;
+        }
+
         $data = $this->loadFormData();
 
         if ($data === null) {
@@ -93,8 +128,117 @@ class WebcompFormComponent extends CBitrixComponent
             $this->getDefaultSubmitResult(),
             false
         );
+        $this->arResult['RENDER_MODE'] = 'inline';
 
         $this->includeComponentTemplate();
+    }
+
+    /**
+     * Рендерит каркас попапа: кнопку-триггер и пустой dialog.
+     *
+     * Запросы к инфоблоку не выполняются - форма приедет HTML-фрагментом при
+     * первом открытии попапа. Единственное исключение - возврат с маркером
+     * успешной fallback-отправки, когда форма читается для сверки ID.
+     *
+     * @return void
+     */
+    private function renderPopupShell(): void
+    {
+        $this->arResult = [
+            'FORM' => [],
+            'FIELDS' => [],
+            'VALUES' => [],
+            'ERRORS' => [],
+            'SUBMIT_RESULT' => $this->getDefaultSubmitResult(),
+            'SHOW_SUCCESS' => $this->shouldShowShellSuccess(),
+            'PARAMS_HASH' => $this->getParamsHash(),
+            'USE_AJAX' => $this->arParams['USE_AJAX'],
+            'SUBMIT_TEXT' => $this->arParams['SUBMIT_TEXT'],
+            'IS_SUBMITTED' => false,
+            'RENDER_MODE' => 'popup_shell',
+            'BUTTON_TEXT' => $this->arParams['BUTTON_TEXT'],
+            'BUTTON_CLASS' => $this->arParams['BUTTON_CLASS'],
+        ];
+
+        $this->includeComponentTemplate();
+    }
+
+    /**
+     * Отдает HTML-фрагмент формы для попапа и завершает запрос.
+     *
+     * Фрагмент рендерится в сессии текущего посетителя и содержит актуальный
+     * sessid, поэтому страница с кнопкой может кэшироваться целиком - защита
+     * отправки от этого не страдает.
+     *
+     * @return void
+     */
+    private function renderFragment(): void
+    {
+        global $APPLICATION;
+
+        $APPLICATION->RestartBuffer();
+        header('Content-Type: text/html; charset=UTF-8');
+
+        $data = $this->loadFormData();
+
+        if ($data === null) {
+            echo '<div class="alert alert-danger" role="alert">Форма не найдена.</div>';
+        } else {
+            [$form, $fields] = $data;
+
+            $this->arResult = $this->buildArResult(
+                $form,
+                $fields,
+                $this->getEmptyValues($fields),
+                [],
+                $this->getDefaultSubmitResult(),
+                false
+            );
+            $this->arResult['RENDER_MODE'] = 'fragment';
+
+            $this->includeComponentTemplate();
+        }
+
+        CMain::FinalActions();
+        die();
+    }
+
+    /**
+     * Проверяет, что текущий запрос - запрос HTML-фрагмента формы для попапа.
+     *
+     * Фрагмент не изменяет данные, поэтому sessid не требуется: проверяется
+     * только принадлежность запроса этому вызову компонента через PARAMS_HASH.
+     *
+     * @return bool
+     */
+    private function isFragmentRequest(): bool
+    {
+        if ($this->arParams['DISPLAY_MODE'] !== self::DISPLAY_POPUP) {
+            return false;
+        }
+
+        $request = Context::getCurrent()->getRequest();
+
+        return (string)$request->get(self::RENDER_FIELD) === 'Y'
+            && (string)$request->get(self::PARAMS_HASH_FIELD) === $this->getParamsHash();
+    }
+
+    /**
+     * Определяет показ баннера успеха у кнопки попапа после fallback-отправки.
+     *
+     * @return bool
+     */
+    private function shouldShowShellSuccess(): bool
+    {
+        $flag = (int)Context::getCurrent()->getRequest()->get(self::SUCCESS_FLAG_FIELD);
+
+        if ($flag <= 0) {
+            return false;
+        }
+
+        $data = $this->loadFormData();
+
+        return $data !== null && (int)($data[0]['ID'] ?? 0) === $flag;
     }
 
     /**
@@ -145,6 +289,7 @@ class WebcompFormComponent extends CBitrixComponent
         }
 
         $this->arResult = $this->buildArResult($form, $fields, $values, $errors, $submitResult, true);
+        $this->arResult['RENDER_MODE'] = 'inline';
 
         if ($this->isAjaxResponseRequired()) {
             $this->sendAjaxResponse();

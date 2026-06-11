@@ -62,5 +62,27 @@ $arComponentParameters = [
             'TYPE' => 'CHECKBOX',
             'DEFAULT' => 'Y',
         ],
+        'DISPLAY_MODE' => [
+            'PARENT' => 'BASE',
+            'NAME' => 'Режим отображения',
+            'TYPE' => 'LIST',
+            'VALUES' => [
+                'inline' => 'Инлайн-форма',
+                'popup' => 'Кнопка с всплывающей формой',
+            ],
+            'DEFAULT' => 'inline',
+        ],
+        'BUTTON_TEXT' => [
+            'PARENT' => 'BASE',
+            'NAME' => 'Текст кнопки попапа',
+            'TYPE' => 'STRING',
+            'DEFAULT' => 'Открыть форму',
+        ],
+        'BUTTON_CLASS' => [
+            'PARENT' => 'BASE',
+            'NAME' => 'CSS-классы кнопки попапа',
+            'TYPE' => 'STRING',
+            'DEFAULT' => 'btn btn-primary',
+        ],
     ],
 ];

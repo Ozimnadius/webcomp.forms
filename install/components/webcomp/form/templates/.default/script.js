@@ -1,33 +1,107 @@
 (function () {
     'use strict';
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    if (typeof window.fetch !== 'function') {
+        return;
     }
 
-    function init() {
-        var forms = document.querySelectorAll('[data-webcomp-form]');
+    // Все обработчики делегированы на document: формы и попапы продолжают
+    // работать в любом динамически вставленном DOM (ленивая загрузка фрагмента).
 
-        if (!forms.length || typeof window.fetch !== 'function') {
+    document.addEventListener('submit', function (event) {
+        var form = event.target.closest('[data-webcomp-form]');
+
+        if (!form || form.dataset.ajax !== 'Y') {
             return;
         }
 
-        forms.forEach(function (form) {
-            if (form.dataset.ajax !== 'Y') {
-                return;
+        if (typeof form.checkValidity === 'function' && !form.checkValidity()) {
+            return;
         }
 
-        form.addEventListener('submit', function (event) {
-            if (typeof form.checkValidity === 'function' && !form.checkValidity()) {
-                return;
+        event.preventDefault();
+        submitForm(form);
+    });
+
+    document.addEventListener('click', function (event) {
+        var opener = event.target.closest('[data-webcomp-form-open]');
+
+        if (opener) {
+            event.preventDefault();
+            openDialog(opener.getAttribute('data-webcomp-form-open'));
+            return;
+        }
+
+        var closer = event.target.closest('[data-webcomp-form-close]');
+
+        if (closer) {
+            var dialog = closer.closest('dialog');
+
+            if (dialog) {
+                dialog.close();
             }
 
-            event.preventDefault();
-            submitForm(form);
-        });
-        });
+            return;
+        }
+
+        // Клик по самому dialog мимо контента означает клик по backdrop.
+        if (event.target instanceof HTMLDialogElement && event.target.hasAttribute('data-webcomp-form-dialog')) {
+            event.target.close();
+        }
+    });
+
+    function openDialog(dialogId) {
+        var dialog = document.getElementById(dialogId);
+
+        if (!dialog || typeof dialog.showModal !== 'function') {
+            return;
+        }
+
+        if (!dialog.open) {
+            dialog.showModal();
+        }
+
+        if (dialog.dataset.loaded === 'Y' || dialog.dataset.loading === 'Y') {
+            return;
+        }
+
+        loadFragment(dialog);
+    }
+
+    function loadFragment(dialog) {
+        var body = dialog.querySelector('[data-webcomp-form-dialog-body]');
+        var url = dialog.getAttribute('data-fragment-url');
+
+        if (!body || !url) {
+            return;
+        }
+
+        dialog.dataset.loading = 'Y';
+        body.innerHTML = '<div class="webcomp-form-dialog__loader">Загрузка...</div>';
+
+        fetch(url, {
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+
+                return response.text();
+            })
+            .then(function (html) {
+                body.innerHTML = html;
+                dialog.dataset.loaded = 'Y';
+            })
+            .catch(function () {
+                body.innerHTML = '<div class="alert alert-danger" role="alert">Не удалось загрузить форму. Попробуйте позже.</div>';
+            })
+            .finally(function () {
+                delete dialog.dataset.loading;
+            });
     }
 
     function submitForm(form) {

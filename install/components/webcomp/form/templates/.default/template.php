@@ -13,6 +13,34 @@ Asset::getInstance()->addCss('https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/
 $view = $arResult['VIEW'];
 ?>
 
+<?php if ($view['MODE'] === 'popup_shell'): ?>
+    <?php $popup = $view['POPUP']; ?>
+    <div class="webcomp-form-popup">
+        <?php if ($view['SHOW_SUCCESS']): ?>
+            <div class="alert alert-success" role="alert">
+                Форма успешно отправлена.
+            </div>
+        <?php endif; ?>
+
+        <button
+            type="button"
+            class="<?= htmlspecialcharsbx($popup['BUTTON_CLASS']) ?>"
+            data-webcomp-form-open="<?= htmlspecialcharsbx($popup['MODAL_ID']) ?>"
+        ><?= htmlspecialcharsbx($popup['BUTTON_TEXT']) ?></button>
+
+        <dialog
+            class="webcomp-form-dialog"
+            id="<?= htmlspecialcharsbx($popup['MODAL_ID']) ?>"
+            data-webcomp-form-dialog
+            data-fragment-url="<?= htmlspecialcharsbx($popup['FRAGMENT_URL']) ?>"
+        >
+            <button type="button" class="webcomp-form-dialog__close" data-webcomp-form-close aria-label="Закрыть">&times;</button>
+            <div class="webcomp-form-dialog__body" data-webcomp-form-dialog-body></div>
+        </dialog>
+    </div>
+    <?php return; ?>
+<?php endif; ?>
+
 <div class="webcomp-form">
     <?php if ($view['SHOW_SUCCESS']): ?>
         <div class="alert alert-success" role="alert">
